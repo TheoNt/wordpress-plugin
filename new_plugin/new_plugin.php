@@ -67,63 +67,64 @@ function updateItems(){
 
 function submitForm(){
 
-    if(isset($_POST['xml_btn'])){
-            update_SQL_from_XML();
+    if(isset($_POST['xml_update_btn'])){
+        update_SQL_from_XML();
         
+    }
+
+    if(isset($_POST['xml_import_btn'])){
+        //xmlToSql();
+        imagesTransfer();
     }
 
     ?>
         <form method="post" action="">
-        <input type="submit" name="xml_btn" value="Import xml">
+        <input type="submit" name="xml_update_btn" value="Update xml">
+        </form> 
+    <?php
+
+    ?>
+    <br>
+    <?php
+
+    ?>
+        <form method="post" action="">
+        <input type="submit" name="xml_import_btn" value="Import xml">
         </form> 
     <?php
 }
 
-function sqlToXml(){
-    global $wpdb;
-    $query = "SELECT * FROM wphr_posts";
-    
-    $xml = new DOMDocument('1.0', 'UTF-8');
-    $xmlRoot = $xml->createElement('wphr_posts');
-    $xmlRoot = $xml->appendChild($xmlRoot);
-    $rows = $wpdb->get_results($query);
-    foreach($rows as $row){
-        $currentPerson = $xml->createElement("post");
-        $currentPerson = $xmlRoot->appendChild($currentPerson);
-        $currentPerson->appendChild($xml->createElement('ID',$row->ID));
-        $currentPerson->appendChild($xml->createElement('post_author', $row->post_author));
-        $currentPerson->appendChild($xml->createElement('post_date',$row->post_date));
-        $currentPerson->appendChild($xml->createElement('post_date_gmt',$row->post_date_gmt));
-        $currentPerson->appendChild($xml->createElement('post_content', $row->post_content));
-        $currentPerson->appendChild($xml->createElement('post_title', $row->post_title));
-        $currentPerson->appendChild($xml->createElement('post_excerpt', $row->post_excerpt));
-        $currentPerson->appendChild($xml->createElement('post_status', $row->post_status));
-        $currentPerson->appendChild($xml->createElement('comment_status', $row->comment_status));
-        $currentPerson->appendChild($xml->createElement('ping_status', $row->ping_status));
-        $currentPerson->appendChild($xml->createElement('post_password', $row->post_password));
-        $currentPerson->appendChild($xml->createElement('post_name', $row->post_name));
-        $currentPerson->appendChild($xml->createElement('to_ping', $row->to_ping));
-        $currentPerson->appendChild($xml->createElement('pinged', $row->pinged));
-        $currentPerson->appendChild($xml->createElement('post_modified', $row->post_modified));
-        $currentPerson->appendChild($xml->createElement('post_modified_gmt', $row->post_modified_gmt));
-        $currentPerson->appendChild($xml->createElement('post_content_filtered', $row->post_content_filtered));
-        $currentPerson->appendChild($xml->createElement('post_parent', $row->post_parent));
-        $currentPerson->appendChild($xml->createElement('guid', $row->guid));
-        $currentPerson->appendChild($xml->createElement('menu_order', $row->menu_order));
-        $currentPerson->appendChild($xml->createElement('post_type', $row->post_type));
-        $currentPerson->appendChild($xml->createElement('post_mime_type', $row->post_mime_type));
-        $currentPerson->appendChild($xml->createElement('comment_count', $row->comment_count));
-        
+function imagesTransfer(){
+    global $wp_filesystem;
+
+    if (empty($wp_filesystem)) {
+        require_once (ABSPATH . '/wp-admin/includes/file.php');
+        WP_Filesystem();
     }
-    file_put_contents("wphr_posts.xml", $xml->saveXML());
     
+    if(!$xmlFile = $wp_filesystem->get_contents('https://placeadvisor.aserver.gr/wp-admin/wphr_posts.xml') ) {
+        echo 'failed to read img files';
+    }
+
+    $dom = new DOMDocument('1.0', 'UTF-8');
+    $dom->loadXML($xmlFile);
+    $images_path = $dom->getElementsByTagName('img');
+    foreach($images_path as $image_path){
+        $image_url = $image_path->getElementsByTagName('guid')->item(0)->nodeValue;
+        $url = 'https://placeadvisor.aserver.gr';
+        $image_path = str_replace($url, '', $image_url);
+        echo $wp_filesystem->exists($image_path);
+        $image_file = $wp_filesystem->get_contents($image_url);
+        $wp_filesystem->put_contents(ABSPATH .  $image_path, $image_file, 0644);
+    }
 }
 
 function xmlToSql(){
+    
     global $wpdb;
     $dom = new DOMDocument('1.0', 'UTF-8');
     $dom->load('https://placeadvisor.aserver.gr/wp-admin/wphr_posts.xml') or die("Cant load xml file");
-    $posts_elements = $dom->getElementsByTagName('post');
+    $posts_elements = $dom->getElementsByTagName('product');
     foreach($posts_elements as $post_element){
         $new_insert = array(
             'ID' => $post_element->getElementsByTagName('ID')->item(0)->nodeValue,
@@ -150,10 +151,108 @@ function xmlToSql(){
             'post_mime_type' => $post_element->getElementsByTagName('post_mime_type')->item(0)->nodeValue,
             'comment_count' => $post_element->getElementsByTagName('comment_count')->item(0)->nodeValue
         );
-        $wpdb->insert('wphr_posts', $new_insert);
+        $wpdb->insert('wpij_posts', $new_insert);
+    }
+
+    $posts_elements = $dom->getElementsByTagName('img');
+    foreach($posts_elements as $post_element){
+        $new_insert = array(
+            'ID' => $post_element->getElementsByTagName('ID')->item(0)->nodeValue,
+            'post_author' => $post_element->getElementsByTagName('post_author')->item(0)->nodeValue,
+            'post_date' => $post_element->getElementsByTagName('post_date')->item(0)->nodeValue,
+            'post_date_gmt' => $post_element->getElementsByTagName('post_date_gmt')->item(0)->nodeValue,
+            'post_content' => $post_element->getElementsByTagName('post_content')->item(0)->nodeValue,
+            'post_title' => $post_element->getElementsByTagName('post_title')->item(0)->nodeValue,
+            'post_excerpt' => $post_element->getElementsByTagName('post_excerpt')->item(0)->nodeValue,
+            'post_status' => $post_element->getElementsByTagName('post_status')->item(0)->nodeValue,
+            'comment_status' => $post_element->getElementsByTagName('comment_status')->item(0)->nodeValue,
+            'ping_status' => $post_element->getElementsByTagName('ping_status')->item(0)->nodeValue,
+            'post_password' => $post_element->getElementsByTagName('post_password')->item(0)->nodeValue,
+            'post_name' => $post_element->getElementsByTagName('post_name')->item(0)->nodeValue,
+            'to_ping' => $post_element->getElementsByTagName('to_ping')->item(0)->nodeValue,
+            'pinged' => $post_element->getElementsByTagName('pinged')->item(0)->nodeValue,
+            'post_modified' => $post_element->getElementsByTagName('post_modified')->item(0)->nodeValue,
+            'post_modified_gmt' => $post_element->getElementsByTagName('post_modified_gmt')->item(0)->nodeValue,
+            'post_content_filtered' => $post_element->getElementsByTagName('post_content_filtered')->item(0)->nodeValue,
+            'post_parent' => $post_element->getElementsByTagName('post_parent')->item(0)->nodeValue,
+            'guid' => $post_element->getElementsByTagName('guid')->item(0)->nodeValue,
+            'menu_order' => $post_element->getElementsByTagName('menu_order')->item(0)->nodeValue,
+            'post_type' => $post_element->getElementsByTagName('post_type')->item(0)->nodeValue,
+            'post_mime_type' => $post_element->getElementsByTagName('post_mime_type')->item(0)->nodeValue,
+            'comment_count' => $post_element->getElementsByTagName('comment_count')->item(0)->nodeValue
+        );
+        $wpdb->insert('wpij_posts', $new_insert);
+    }
+
+    $posts_elements = $dom->getElementsByTagName('product_meta');
+    foreach($posts_elements as $post_element){
+        $new_insert = array(
+            'product_id' => $post_element->getElementsByTagName('product_id')->item(0)->nodeValue,
+            'sku' => $post_element->getElementsByTagName('sku')->item(0)->nodeValue,
+            'virtual' => $post_element->getElementsByTagName('virtual')->item(0)->nodeValue,
+            'downloadable' => $post_element->getElementsByTagName('downloadable')->item(0)->nodeValue,
+            'min_price' => $post_element->getElementsByTagName('min_price')->item(0)->nodeValue,
+            'max_price' => $post_element->getElementsByTagName('max_price')->item(0)->nodeValue,
+            'onsale' => $post_element->getElementsByTagName('onsale')->item(0)->nodeValue,
+            'stock_quantity' => $post_element->getElementsByTagName('stock_quantity')->item(0)->nodeValue,
+            'stock_status' => $post_element->getElementsByTagName('stock_status')->item(0)->nodeValue,
+            'rating_count' => $post_element->getElementsByTagName('rating_count')->item(0)->nodeValue,
+            'average_rating' => $post_element->getElementsByTagName('average_rating')->item(0)->nodeValue,
+            'total_sales' => $post_element->getElementsByTagName('total_sales')->item(0)->nodeValue,
+            'tax_status' => $post_element->getElementsByTagName('tax_status')->item(0)->nodeValue
+        );
+        $wpdb->insert('wpij_wc_product_meta_lookup', $new_insert);
+    }
+
+    $posts_elements = $dom->getElementsByTagName('term');
+    foreach($posts_elements as $post_element){
+        $new_insert = array(
+            'term_id' => $post_element->getElementsByTagName('term_id')->item(0)->nodeValue,
+            'name' => $post_element->getElementsByTagName('name')->item(0)->nodeValue,
+            'slug' => $post_element->getElementsByTagName('slug')->item(0)->nodeValue,
+            'term_group' => $post_element->getElementsByTagName('term_group')->item(0)->nodeValue
+        );
+        $wpdb->insert('wpij_terms', $new_insert);
+    }
+
+    $posts_elements = $dom->getElementsByTagName('term_relationship');
+    foreach($posts_elements as $post_element){
+        $new_insert = array(
+            'object_id' => $post_element->getElementsByTagName('object_id')->item(0)->nodeValue,
+            'term_taxonomy_id' => $post_element->getElementsByTagName('term_taxonomy_id')->item(0)->nodeValue,
+            'term_order' => $post_element->getElementsByTagName('term_order')->item(0)->nodeValue
+        );
+        $object_id = $post_element->getElementsByTagName('object_id')->item(0)->nodeValue;
+        $term_taxonomy_id = $post_element->getElementsByTagName('term_taxonomy_id')->item(0)->nodeValue;
+        $term_order = $post_element->getElementsByTagName('term_order')->item(0)->nodeValue;
+        $wpdb->insert('wpij_term_relationships', $new_insert, array('%d', '%d', '%d'));
+    }
+
+    $posts_elements = $dom->getElementsByTagName('term_taxonomy');
+    foreach($posts_elements as $post_element){
+        $new_insert = array(
+            'term_taxonomy_id' => $post_element->getElementsByTagName('term_taxonomy_id')->item(0)->nodeValue,
+            'term_id' => $post_element->getElementsByTagName('term_id')->item(0)->nodeValue,
+            'taxonomy' => $post_element->getElementsByTagName('taxonomy')->item(0)->nodeValue,
+            'description' => $post_element->getElementsByTagName('description')->item(0)->nodeValue,
+            'parent' => $post_element->getElementsByTagName('parent')->item(0)->nodeValue,
+            'count' => $post_element->getElementsByTagName('count')->item(0)->nodeValue,
+        );
+        $wpdb->insert('wpij_term_taxonomy', $new_insert);
+    }
+
+    $posts_elements = $dom->getElementsByTagName('post_meta');
+    foreach($posts_elements as $post_element){
+        $new_insert = array(
+            'meta_id' => $post_element->getElementsByTagName('meta_id')->item(0)->nodeValue,
+            'post_id' => $post_element->getElementsByTagName('post_id')->item(0)->nodeValue,
+            'meta_key' => $post_element->getElementsByTagName('meta_key')->item(0)->nodeValue,
+            'meta_value' => $post_element->getElementsByTagName('meta_value')->item(0)->nodeValue
+        );
+        $wpdb->insert('wpij_postmeta', $new_insert);
     }
 }
-
+// Checks for new inserts and updates from XML file to SQL DB
 function xmlToSqlNewInserts(){
     global $wpdb; 
     global $wp_filesystem;
@@ -164,54 +263,284 @@ function xmlToSqlNewInserts(){
     }
     
     if(!$xmlFile = $wp_filesystem->get_contents('https://placeadvisor.aserver.gr/wp-admin/wphr_posts.xml') ) {
-        echo 'failed to read xml file in check inserts';
+        echo 'failed to read xml file for checking inserts';
     }
     $dom = new DOMDocument('1.0', 'UTF-8');
-    //$dom->load('https://placeadvisor.aserver.gr/wp-admin/wphr_posts.xml') or die("Cant load xml file");
     $dom->loadXML($xmlFile);
-    $elements_length = $dom->getElementsByTagName('post')->length;
-    $posts_elements = $dom->getElementsByTagName('post');
-    $last_post_element = $posts_elements[$elements_length-1];
-    $last_post_element_id = $last_post_element->getElementsByTagName('ID')->item(0)->nodeValue;
-    $last_insert_id = $wpdb->get_results("SELECT ID FROM `wphr_posts` ORDER BY ID DESC LIMIT 1"); // last ID
-    $last_insert_id_num = $last_insert_id[0]->ID;
-    $xpath = new DOMXPath($dom);
-    $new_inserts = $xpath->query("//wphr_posts/post/ID[text() = $last_insert_id_num]/..");
-    //print_r($new_inserts->item(0)->getElementsByTagName('post_modified')->item(0)->nodeValue);
-    $new_insert_id = preg_replace("/[^0-9]/", '', $new_inserts->item(0)->getElementsByTagName('ID')->item(0)->getNodePath());
-    if($last_post_element_id > $last_insert_id_num){
-        for($i=$new_insert_id; $i<$posts_elements->length; $i++){
-            $next_element = $posts_elements->item($i);
-            $new_insert_array = array(
-            'ID' => $next_element->getElementsByTagName('ID')->item(0)->nodeValue, 
-            'post_author' => $next_element->getElementsByTagName('post_author')->item(0)->nodeValue,
-            'post_date' => $next_element->getElementsByTagName('post_date')->item(0)->nodeValue,
-            'post_date_gmt' => $next_element->getElementsByTagName('post_date_gmt')->item(0)->nodeValue,
-            'post_content' => $next_element->getElementsByTagName('post_content')->item(0)->nodeValue,
-            'post_title' => $next_element->getElementsByTagName('post_title')->item(0)->nodeValue,
-            'post_excerpt' => $next_element->getElementsByTagName('post_excerpt')->item(0)->nodeValue,
-            'post_status' => $next_element->getElementsByTagName('post_status')->item(0)->nodeValue,
-            'comment_status' => $next_element->getElementsByTagName('comment_status')->item(0)->nodeValue,
-            'ping_status' => $next_element->getElementsByTagName('ping_status')->item(0)->nodeValue,
-            'post_password' => $next_element->getElementsByTagName('post_password')->item(0)->nodeValue,
-            'post_name' => $next_element->getElementsByTagName('post_name')->item(0)->nodeValue,
-            'to_ping' => $next_element->getElementsByTagName('to_ping')->item(0)->nodeValue,
-            'pinged' => $next_element->getElementsByTagName('pinged')->item(0)->nodeValue,
-            'post_modified' => $next_element->getElementsByTagName('post_modified')->item(0)->nodeValue,
-            'post_modified_gmt' => $next_element->getElementsByTagName('post_modified_gmt')->item(0)->nodeValue,
-            'post_content_filtered' => $next_element->getElementsByTagName('post_content_filtered')->item(0)->nodeValue,
-            'post_parent' => $next_element->getElementsByTagName('post_parent')->item(0)->nodeValue,
-            'guid' => $next_element->getElementsByTagName('guid')->item(0)->nodeValue,
-            'menu_order' => $next_element->getElementsByTagName('menu_order')->item(0)->nodeValue,
-            'post_type' => $next_element->getElementsByTagName('post_type')->item(0)->nodeValue,
-            'post_mime_type' => $next_element->getElementsByTagName('post_mime_type')->item(0)->nodeValue,
-            'comment_count' => $next_element->getElementsByTagName('comment_count')->item(0)->nodeValue);
-            $wpdb->insert('wphr_posts', $new_insert_array);
+    $elements = $dom->getElementsByTagName('product');
+    foreach($elements as $element){
+        $element_id = $element->getElementsByTagName('ID')->item(0)->nodeValue;
+        if($db_timestamp = $wpdb->get_results("SELECT ID, post_modified FROM `wpij_posts` WHERE ID = $element_id")){
+            $xml_timestamp = $element->getElementsByTagName('post_modified')->item(0)->nodeValue;
+            if(new DateTime($xml_timestamp) > new DateTime($db_timestamp[0]->post_modified)){
+                $updates = array(
+                'ID' => $element->getElementsByTagName('ID')->item(0)->nodeValue,
+                'post_author' => $element->getElementsByTagName('post_author')->item(0)->nodeValue,
+                'post_date' => $element->getElementsByTagName('post_date')->item(0)->nodeValue,
+                'post_date_gmt' => $element->getElementsByTagName('post_date_gmt')->item(0)->nodeValue,
+                'post_content' => $element->getElementsByTagName('post_content')->item(0)->nodeValue,
+                'post_title' => $element->getElementsByTagName('post_title')->item(0)->nodeValue,
+                'post_excerpt' => $element->getElementsByTagName('post_excerpt')->item(0)->nodeValue,
+                'post_status' => $element->getElementsByTagName('post_status')->item(0)->nodeValue,
+                'comment_status' => $element->getElementsByTagName('comment_status')->item(0)->nodeValue,
+                'ping_status' => $element->getElementsByTagName('ping_status')->item(0)->nodeValue,
+                'post_password' => $element->getElementsByTagName('post_password')->item(0)->nodeValue,
+                'post_name' => $element->getElementsByTagName('post_name')->item(0)->nodeValue,
+                'to_ping' => $element->getElementsByTagName('to_ping')->item(0)->nodeValue,
+                'pinged' => $element->getElementsByTagName('pinged')->item(0)->nodeValue,
+                'post_modified' => $element->getElementsByTagName('post_modified')->item(0)->nodeValue,
+                'post_modified_gmt' => $element->getElementsByTagName('post_modified_gmt')->item(0)->nodeValue,
+                'post_content_filtered' => $element->getElementsByTagName('post_content_filtered')->item(0)->nodeValue,
+                'post_parent' => $element->getElementsByTagName('post_parent')->item(0)->nodeValue,
+                'guid' => $element->getElementsByTagName('guid')->item(0)->nodeValue,
+                'menu_order' => $element->getElementsByTagName('menu_order')->item(0)->nodeValue,
+                'post_type' => $element->getElementsByTagName('post_type')->item(0)->nodeValue,
+                'post_mime_type' => $element->getElementsByTagName('post_mime_type')->item(0)->nodeValue,
+                'comment_count' => $element->getElementsByTagName('comment_count')->item(0)->nodeValue
+                );
+                $wpdb->update('wpij_posts', $updates, array('ID' => $element_id));
+            }
+        }else{
+                $new_insert = array(
+                'ID' => $element->getElementsByTagName('ID')->item(0)->nodeValue,
+                'post_author' => $element->getElementsByTagName('post_author')->item(0)->nodeValue,
+                'post_date' => $element->getElementsByTagName('post_date')->item(0)->nodeValue,
+                'post_date_gmt' => $element->getElementsByTagName('post_date_gmt')->item(0)->nodeValue,
+                'post_content' => $element->getElementsByTagName('post_content')->item(0)->nodeValue,
+                'post_title' => $element->getElementsByTagName('post_title')->item(0)->nodeValue,
+                'post_excerpt' => $element->getElementsByTagName('post_excerpt')->item(0)->nodeValue,
+                'post_status' => $element->getElementsByTagName('post_status')->item(0)->nodeValue,
+                'comment_status' => $element->getElementsByTagName('comment_status')->item(0)->nodeValue,
+                'ping_status' => $element->getElementsByTagName('ping_status')->item(0)->nodeValue,
+                'post_password' => $element->getElementsByTagName('post_password')->item(0)->nodeValue,
+                'post_name' => $element->getElementsByTagName('post_name')->item(0)->nodeValue,
+                'to_ping' => $element->getElementsByTagName('to_ping')->item(0)->nodeValue,
+                'pinged' => $element->getElementsByTagName('pinged')->item(0)->nodeValue,
+                'post_modified' => $element->getElementsByTagName('post_modified')->item(0)->nodeValue,
+                'post_modified_gmt' => $element->getElementsByTagName('post_modified_gmt')->item(0)->nodeValue,
+                'post_content_filtered' => $element->getElementsByTagName('post_content_filtered')->item(0)->nodeValue,
+                'post_parent' => $element->getElementsByTagName('post_parent')->item(0)->nodeValue,
+                'guid' => $element->getElementsByTagName('guid')->item(0)->nodeValue,
+                'menu_order' => $element->getElementsByTagName('menu_order')->item(0)->nodeValue,
+                'post_type' => $element->getElementsByTagName('post_type')->item(0)->nodeValue,
+                'post_mime_type' => $element->getElementsByTagName('post_mime_type')->item(0)->nodeValue,
+                'comment_count' => $element->getElementsByTagName('comment_count')->item(0)->nodeValue
+                );
+                $wpdb->insert('wpij_posts', $new_insert);
+        }
+        
+    }
+
+    $elements = $dom->getElementsByTagName('img');
+    foreach($elements as $element){
+        $element_id = $element->getElementsByTagName('ID')->item(0)->nodeValue;
+        if($db_timestamp = $wpdb->get_results("SELECT ID, post_modified FROM `wpij_posts` WHERE ID = $element_id")){
+            $xml_timestamp = $element->getElementsByTagName('post_modified')->item(0)->nodeValue;
+            if(new DateTime($xml_timestamp) > new DateTime($db_timestamp[0]->post_modified)){
+                $updates = array(
+                'ID' => $element->getElementsByTagName('ID')->item(0)->nodeValue,
+                'post_author' => $element->getElementsByTagName('post_author')->item(0)->nodeValue,
+                'post_date' => $element->getElementsByTagName('post_date')->item(0)->nodeValue,
+                'post_date_gmt' => $element->getElementsByTagName('post_date_gmt')->item(0)->nodeValue,
+                'post_content' => $element->getElementsByTagName('post_content')->item(0)->nodeValue,
+                'post_title' => $element->getElementsByTagName('post_title')->item(0)->nodeValue,
+                'post_excerpt' => $element->getElementsByTagName('post_excerpt')->item(0)->nodeValue,
+                'post_status' => $element->getElementsByTagName('post_status')->item(0)->nodeValue,
+                'comment_status' => $element->getElementsByTagName('comment_status')->item(0)->nodeValue,
+                'ping_status' => $element->getElementsByTagName('ping_status')->item(0)->nodeValue,
+                'post_password' => $element->getElementsByTagName('post_password')->item(0)->nodeValue,
+                'post_name' => $element->getElementsByTagName('post_name')->item(0)->nodeValue,
+                'to_ping' => $element->getElementsByTagName('to_ping')->item(0)->nodeValue,
+                'pinged' => $element->getElementsByTagName('pinged')->item(0)->nodeValue,
+                'post_modified' => $element->getElementsByTagName('post_modified')->item(0)->nodeValue,
+                'post_modified_gmt' => $element->getElementsByTagName('post_modified_gmt')->item(0)->nodeValue,
+                'post_content_filtered' => $element->getElementsByTagName('post_content_filtered')->item(0)->nodeValue,
+                'post_parent' => $element->getElementsByTagName('post_parent')->item(0)->nodeValue,
+                'guid' => $element->getElementsByTagName('guid')->item(0)->nodeValue,
+                'menu_order' => $element->getElementsByTagName('menu_order')->item(0)->nodeValue,
+                'post_type' => $element->getElementsByTagName('post_type')->item(0)->nodeValue,
+                'post_mime_type' => $element->getElementsByTagName('post_mime_type')->item(0)->nodeValue,
+                'comment_count' => $element->getElementsByTagName('comment_count')->item(0)->nodeValue
+                );
+                $wpdb->update('wpij_posts', $updates, array('ID' => $element_id));
+            }
+        }else{
+                $new_insert = array(
+                'ID' => $element->getElementsByTagName('ID')->item(0)->nodeValue,
+                'post_author' => $element->getElementsByTagName('post_author')->item(0)->nodeValue,
+                'post_date' => $element->getElementsByTagName('post_date')->item(0)->nodeValue,
+                'post_date_gmt' => $element->getElementsByTagName('post_date_gmt')->item(0)->nodeValue,
+                'post_content' => $element->getElementsByTagName('post_content')->item(0)->nodeValue,
+                'post_title' => $element->getElementsByTagName('post_title')->item(0)->nodeValue,
+                'post_excerpt' => $element->getElementsByTagName('post_excerpt')->item(0)->nodeValue,
+                'post_status' => $element->getElementsByTagName('post_status')->item(0)->nodeValue,
+                'comment_status' => $element->getElementsByTagName('comment_status')->item(0)->nodeValue,
+                'ping_status' => $element->getElementsByTagName('ping_status')->item(0)->nodeValue,
+                'post_password' => $element->getElementsByTagName('post_password')->item(0)->nodeValue,
+                'post_name' => $element->getElementsByTagName('post_name')->item(0)->nodeValue,
+                'to_ping' => $element->getElementsByTagName('to_ping')->item(0)->nodeValue,
+                'pinged' => $element->getElementsByTagName('pinged')->item(0)->nodeValue,
+                'post_modified' => $element->getElementsByTagName('post_modified')->item(0)->nodeValue,
+                'post_modified_gmt' => $element->getElementsByTagName('post_modified_gmt')->item(0)->nodeValue,
+                'post_content_filtered' => $element->getElementsByTagName('post_content_filtered')->item(0)->nodeValue,
+                'post_parent' => $element->getElementsByTagName('post_parent')->item(0)->nodeValue,
+                'guid' => $element->getElementsByTagName('guid')->item(0)->nodeValue,
+                'menu_order' => $element->getElementsByTagName('menu_order')->item(0)->nodeValue,
+                'post_type' => $element->getElementsByTagName('post_type')->item(0)->nodeValue,
+                'post_mime_type' => $element->getElementsByTagName('post_mime_type')->item(0)->nodeValue,
+                'comment_count' => $element->getElementsByTagName('comment_count')->item(0)->nodeValue
+                );
+                $wpdb->insert('wpij_posts', $new_insert);
         }
     }
+
+    $elements = $dom->getElementsByTagName('product_meta');
+    foreach($elements as $element){
+        $element_id = $element->getElementsByTagName('product_id')->item(0)->nodeValue;
+        if($wpdb->get_results("SELECT product_id  FROM `wpij_wc_product_meta_lookup` WHERE product_id = $element_id")){
+                $updates = array(
+                'product_id' => $element->getElementsByTagName('product_id')->item(0)->nodeValue,
+                'sku' => $element->getElementsByTagName('sku')->item(0)->nodeValue,
+                'virtual' => $element->getElementsByTagName('virtual')->item(0)->nodeValue,
+                'downloadable' => $element->getElementsByTagName('downloadable')->item(0)->nodeValue,
+                'min_price' => $element->getElementsByTagName('min_price')->item(0)->nodeValue,
+                'max_price' => $element->getElementsByTagName('max_price')->item(0)->nodeValue,
+                'onsale' => $element->getElementsByTagName('onsale')->item(0)->nodeValue,
+                'stock_quantity' => $element->getElementsByTagName('stock_quantity')->item(0)->nodeValue,
+                'stock_status' => $element->getElementsByTagName('stock_status')->item(0)->nodeValue,
+                'rating_count' => $element->getElementsByTagName('rating_count')->item(0)->nodeValue,
+                'average_rating' => $element->getElementsByTagName('average_rating')->item(0)->nodeValue,
+                'total_sales' => $element->getElementsByTagName('total_sales')->item(0)->nodeValue,
+                'tax_status' => $element->getElementsByTagName('tax_status')->item(0)->nodeValue,
+                'tax_class' => $element->getElementsByTagName('tax_class')->item(0)->nodeValue
+                );
+                $wpdb->update('wpij_wc_product_meta_lookup', $updates, array('product_id' => $element_id));
+            
+        }else{
+                $new_insert = array(
+                    'product_id' => $element->getElementsByTagName('product_id')->item(0)->nodeValue,
+                    'sku' => $element->getElementsByTagName('sku')->item(0)->nodeValue,
+                    'virtual' => $element->getElementsByTagName('virtual')->item(0)->nodeValue,
+                    'downloadable' => $element->getElementsByTagName('downloadable')->item(0)->nodeValue,
+                    'min_price' => $element->getElementsByTagName('min_price')->item(0)->nodeValue,
+                    'max_price' => $element->getElementsByTagName('max_price')->item(0)->nodeValue,
+                    'onsale' => $element->getElementsByTagName('onsale')->item(0)->nodeValue,
+                    'stock_quantity' => $element->getElementsByTagName('stock_quantity')->item(0)->nodeValue,
+                    'stock_status' => $element->getElementsByTagName('stock_status')->item(0)->nodeValue,
+                    'rating_count' => $element->getElementsByTagName('rating_count')->item(0)->nodeValue,
+                    'average_rating' => $element->getElementsByTagName('average_rating')->item(0)->nodeValue,
+                    'total_sales' => $element->getElementsByTagName('total_sales')->item(0)->nodeValue,
+                    'tax_status' => $element->getElementsByTagName('tax_status')->item(0)->nodeValue,
+                    'tax_class' => $element->getElementsByTagName('tax_class')->item(0)->nodeValue
+                );
+                $wpdb->insert('wpij_wc_product_meta_lookup', $new_insert);
+        }
+        
+    }
+
+    $elements = $dom->getElementsByTagName('term');
+    foreach($elements as $element){
+        $element_id = $element->getElementsByTagName('term_id')->item(0)->nodeValue;
+        if($wpdb->get_results("SELECT term_id  FROM `wpij_terms` WHERE term_id = $element_id")){
+            
+                $updates = array(
+                'name' => $element->getElementsByTagName('name')->item(0)->nodeValue,
+                'slug' => $element->getElementsByTagName('slug')->item(0)->nodeValue,
+                'term_group' => $element->getElementsByTagName('term_group')->item(0)->nodeValue
+                );
+                $wpdb->update('wpij_terms', $updates, array('term_id' => $element_id));
+            
+        }else{
+                $new_insert = array(
+                'name' => $element->getElementsByTagName('name')->item(0)->nodeValue,
+                'slug' => $element->getElementsByTagName('slug')->item(0)->nodeValue,
+                'term_group' => $element->getElementsByTagName('term_group')->item(0)->nodeValue
+                );
+                $wpdb->insert('wpij_terms', $new_insert);
+        }
+        
+    }
+
+    /*$elements = $dom->getElementsByTagName('term_relationship');
+    foreach($elements as $element){
+        $element_id = $element->getElementsByTagName('object_id')->item(0)->nodeValue;
+        if($wpdb->get_results("SELECT object_id  FROM `wpij_term_relationships` WHERE object_id = $element_id")){
+            
+                $updates = array(
+                'object_id' => $element->getElementsByTagName('object_id')->item(0)->nodeValue,
+                'term_taxonomy_id' => $element->getElementsByTagName('term_taxonomy_id')->item(0)->nodeValue,
+                'term_order' => $element->getElementsByTagName('term_order')->item(0)->nodeValue
+                );
+                $wpdb->update('wpij_term_relationships', $updates, array('object_id' => $element_id));
+            
+        }else{
+                $new_insert = array(
+                'object_id' => $element->getElementsByTagName('object_id')->item(0)->nodeValue,
+                'term_taxonomy_id' => $element->getElementsByTagName('term_taxonomy_id')->item(0)->nodeValue,
+                'term_order' => $element->getElementsByTagName('term_order')->item(0)->nodeValue
+                );
+                $wpdb->insert('wpij_term_relationships', $new_insert);
+        }
+        
+    }*/
+
+    $elements = $dom->getElementsByTagName('term_taxonomy');
+    foreach($elements as $element){
+        $element_id = $element->getElementsByTagName('term_taxonomy_id')->item(0)->nodeValue;
+        if($wpdb->get_results("SELECT term_taxonomy_id  FROM `wpij_term_taxonomy` WHERE term_taxonomy_id = $element_id")){
+            
+                $updates = array(
+                'term_taxonomy_id' => $element->getElementsByTagName('term_taxonomy_id')->item(0)->nodeValue,
+                'term_id' => $element->getElementsByTagName('term_id')->item(0)->nodeValue,
+                'taxonomy' => $element->getElementsByTagName('taxonomy')->item(0)->nodeValue,
+                'description' => $element->getElementsByTagName('description')->item(0)->nodeValue,
+                'parent' => $element->getElementsByTagName('parent')->item(0)->nodeValue,
+                'count' => $element->getElementsByTagName('count')->item(0)->nodeValue
+                );
+                $wpdb->update('wpij_term_taxonomy', $updates, array('term_taxonomy_id' => $element_id));
+            
+        }else{
+                $new_insert = array(
+                    'term_taxonomy_id' => $element->getElementsByTagName('term_taxonomy_id')->item(0)->nodeValue,
+                    'term_id' => $element->getElementsByTagName('term_id')->item(0)->nodeValue,
+                    'taxonomy' => $element->getElementsByTagName('taxonomy')->item(0)->nodeValue,
+                    'description' => $element->getElementsByTagName('description')->item(0)->nodeValue,
+                    'parent' => $element->getElementsByTagName('parent')->item(0)->nodeValue,
+                    'count' => $element->getElementsByTagName('count')->item(0)->nodeValue
+                );
+                $wpdb->insert('wpij_term_taxonomy', $new_insert);
+        }
+        
+    }
+
+    $elements = $dom->getElementsByTagName('post_meta');
+    foreach($elements as $element){
+        $element_id = $element->getElementsByTagName('meta_id')->item(0)->nodeValue;
+        if($wpdb->get_results("SELECT meta_id  FROM `wpij_postmeta` WHERE meta_id = $element_id")){
+            
+                $updates = array(
+                'meta_id' => $element->getElementsByTagName('meta_id')->item(0)->nodeValue,
+                'post_id' => $element->getElementsByTagName('post_id')->item(0)->nodeValue,
+                'meta_key' => $element->getElementsByTagName('meta_key')->item(0)->nodeValue,
+                'meta_value' => $element->getElementsByTagName('meta_value')->item(0)->nodeValue
+                );
+                $wpdb->update('wpij_postmeta', $updates, array('meta_id' => $element_id));
+            
+        }else{
+                $new_insert = array(
+                    'meta_id' => $element->getElementsByTagName('meta_id')->item(0)->nodeValue,
+                    'post_id' => $element->getElementsByTagName('post_id')->item(0)->nodeValue,
+                    'meta_key' => $element->getElementsByTagName('meta_key')->item(0)->nodeValue,
+                    'meta_value' => $element->getElementsByTagName('meta_value')->item(0)->nodeValue
+                );
+                $wpdb->insert('wpij_postmeta', $new_insert);
+        }
+        
+    }
+    
 }
 
-function xmlToSqlUpdates(){
+function xmlTSqlDeletions(){
     global $wpdb;
     global $wp_filesystem;
 
@@ -221,49 +550,60 @@ function xmlToSqlUpdates(){
     }
     
     if(!$xmlFile = $wp_filesystem->get_contents('https://placeadvisor.aserver.gr/wp-admin/wphr_posts.xml') ) {
-        echo 'failed to read xml file in updates';
+        echo 'failed to read xml file for Deletions';
     }
 
     $dom = new DomDocument('1.0', 'UTF-8');
-    //$dom->load('https://placeadvisor.aserver.gr/wp-admin/wphr_posts.xml') or die("Cant load xml file");
     $dom->loadXML($xmlFile);
-    $posts_elements = $dom->getElementsByTagName('posts');
     $xpath = new DOMXPath($dom);
-    $db_inserts = $wpdb->get_results('SELECT ID, post_modified FROM wphr_posts ORDER BY ID ASC');
+    $db_inserts = $wpdb->get_results("SELECT ID FROM wpij_posts WHERE post_type = 'product' ORDER BY ID ASC");
     foreach($db_inserts as $db_insert){
-        if(count($xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")) == 0){
-            $wpdb->delete('wphr_posts', array('ID'=>$db_insert->ID));
-        }else{
-            $xml_timestamp = $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_modified')->item(0)->nodeValue;
-            $db_timestamp = $db_insert->post_modified;
-            if($xml_timestamp > $db_timestamp){
-                $updates = array(
-                    'post_author' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_author')->item(0)->nodeValue,
-                    'post_date' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_date')->item(0)->nodeValue,
-                    'post_date_gmt' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_date_gmt')->item(0)->nodeValue,
-                    'post_content' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_content')->item(0)->nodeValue,
-                    'post_title' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_title')->item(0)->nodeValue,
-                    'post_excerpt' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_excerpt')->item(0)->nodeValue,
-                    'post_status' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_status')->item(0)->nodeValue,
-                    'comment_status' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('comment_status')->item(0)->nodeValue,
-                    'ping_status' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('ping_status')->item(0)->nodeValue,
-                    'post_password' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_password')->item(0)->nodeValue,
-                    'post_name' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_name')->item(0)->nodeValue,
-                    'to_ping' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('to_ping')->item(0)->nodeValue,
-                    'pinged' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('pinged')->item(0)->nodeValue,
-                    'post_modified' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_modified')->item(0)->nodeValue,
-                    'post_modified_gmt' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_modified_gmt')->item(0)->nodeValue,
-                    'post_content_filtered' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_content_filtered')->item(0)->nodeValue,
-                    'post_parent' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_parent')->item(0)->nodeValue,
-                    'guid' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('guid')->item(0)->nodeValue,
-                    'post_type' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_type')->item(0)->nodeValue,
-                    'post_mime_type' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_mime_type')->item(0)->nodeValue,
-                    'comment_count' => $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('comment_count')->item(0)->nodeValue
-                );
-                $wpdb->update('wphr_posts', $updates, array('ID' => $db_insert->ID));
-            }
+        if(count($xpath->query("//wphr_posts/products/product/ID[text() = $db_insert->ID]/..")) == 0){
+            $wpdb->delete('wpij_posts', array('ID'=>$db_insert->ID));
         } 
-    }  
+    }
+
+    $db_inserts = $wpdb->get_results("SELECT ID FROM wpij_posts WHERE post_type = 'attachment' ORDER BY ID ASC");
+    foreach($db_inserts as $db_insert){
+        if(count($xpath->query("//wphr_posts/imgs/img/ID[text() = $db_insert->ID]/..")) == 0){
+            $wpdb->delete('wpij_posts', array('ID'=>$db_insert->ID));
+        } 
+    }
+
+    $db_inserts = $wpdb->get_results('SELECT product_id FROM wpij_wc_product_meta_lookup ORDER BY product_id ASC');
+    foreach($db_inserts as $db_insert){
+        if(count($xpath->query("//wphr_posts/products_meta/product_meta/product_id[text() = $db_insert->product_id]/..")) == 0){
+            $wpdb->delete('wpij_wc_product_meta_lookup', array('product_id'=>$db_insert->product_id));
+        } 
+    }
+
+    $db_inserts = $wpdb->get_results('SELECT term_id FROM wpij_terms ORDER BY term_id ASC');
+    foreach($db_inserts as $db_insert){
+        if(count($xpath->query("//wphr_posts/terms/term/term_id[text() = $db_insert->term_id]/..")) == 0){
+            $wpdb->delete('wpij_terms', array('term_id'=>$db_insert->term_id));
+        } 
+    }
+
+    $db_inserts = $wpdb->get_results('SELECT object_id FROM wpij_term_relationships ORDER BY object_id ASC');
+    foreach($db_inserts as $db_insert){
+        if(count($xpath->query("//wphr_posts/term_relationships/term_relationship/object_id[text() = $db_insert->object_id]/..")) == 0){
+            $wpdb->delete('wpij_term_relationships', array('object_id'=>$db_insert->object_id));
+        } 
+    }
+
+    $db_inserts = $wpdb->get_results('SELECT term_taxonomy_id FROM wpij_term_taxonomy ORDER BY term_taxonomy_id ASC');
+    foreach($db_inserts as $db_insert){
+        if(count($xpath->query("//wphr_posts/term_taxonomies/term_taxonomy/term_taxonomy_id[text() = $db_insert->term_taxonomy_id]/..")) == 0){
+            $wpdb->delete('wpij_term_taxonomy', array('term_taxonomy_id'=>$db_insert->term_taxonomy_id));
+        } 
+    }
+
+    $db_inserts = $wpdb->get_results('SELECT meta_id FROM wpij_postmeta ORDER BY meta_id ASC');
+    foreach($db_inserts as $db_insert){
+        if(count($xpath->query("//wphr_posts/posts_meta/post_meta/meta_id[text() = $db_insert->meta_id]/..")) == 0){
+            $wpdb->delete('wpij_postmeta', array('meta_id'=>$db_insert->meta_id));
+        } 
+    }
 }
 
 function readSQLFile($fileUrl, $filePath){
@@ -310,105 +650,8 @@ function add_new_mime(){
 
 function update_SQL_from_XML(){
     xmlToSqlNewInserts();
-    xmlToSqlUpdates();
+    xmlTSqlDeletions();
     
-}
-
-function check_inserts(){
-    global $wpdb;
-    $table_name = 'wphr_posts';
-    $last_insert_id = $wpdb->get_results("SELECT ID FROM $table_name ORDER BY ID DESC LIMIT 1"); // last ID
-    $dom = new DOMDocument('1.0', 'UTF-8');
-    $dom->load("wphr_posts.xml");
-    $root_node = $dom->getElementsByTagName('wphr_posts')->item(0);
-    //$last_post = $dom->getElementsByTagName('ID')->length;
-    $xml = new SimpleXMLElement($dom->saveXML());
-    $last_element = $xml->xpath("/wphr_posts/post[last()]"); // last element in xml file
-    $last_element_num = $last_element[0]->ID;
-    $last_insert_id_num = $last_insert_id[0]->ID;
-    if($last_element[0]->ID < $last_insert_id[0]->ID){
-        $new_inserts = $wpdb->get_results("SELECT * FROM $table_name where ID between $last_element_num+1 and $last_insert_id_num");
-        foreach($new_inserts as $new_insert){
-            $post_node = $root_node->appendChild($dom->createElement('post'));
-            $post_node->appendChild($dom->createElement('ID', $new_insert->ID));
-            $post_node->appendChild($dom->createElement('post_author', $new_insert->post_author));
-            $post_node->appendChild($dom->createElement('post_date', $new_insert->post_date));
-            $post_node->appendChild($dom->createElement('post_date_gmt', $new_insert->post_date_gmt));
-            $post_node->appendChild($dom->createElement('post_content', $new_insert->post_content));
-            $post_node->appendChild($dom->createElement('post_title', $new_insert->post_title));
-            $post_node->appendChild($dom->createElement('post_excerpt', $new_insert->post_excerpt));
-            $post_node->appendChild($dom->createElement('post_status', $new_insert->post_status));
-            $post_node->appendChild($dom->createElement('comment_status', $new_insert->comment_status));
-            $post_node->appendChild($dom->createElement('ping_status', $new_insert->ping_status));
-            $post_node->appendChild($dom->createElement('post_password', $new_insert->post_password));
-            $post_node->appendChild($dom->createElement('post_name', $new_insert->post_name));
-            $post_node->appendChild($dom->createElement('to_ping', $new_insert->to_ping));
-            $post_node->appendChild($dom->createElement('pinged', $new_insert->pinged));
-            $post_node->appendChild($dom->createElement('post_modified', $new_insert->post_modified));
-            $post_node->appendChild($dom->createElement('post_modified_gmt', $new_insert->post_modified_gmt));
-            $post_node->appendChild($dom->createElement('post_content_filtered', $new_insert->post_content_filtered));
-            $post_node->appendChild($dom->createElement('post_parent', $new_insert->post_parent));
-            $post_node->appendChild($dom->createElement('guid', $new_insert->guid));
-            $post_node->appendChild($dom->createElement('menu_order', $new_insert->menu_order));
-            $post_node->appendChild($dom->createElement('post_type', $new_insert->post_type));
-            $post_node->appendChild($dom->createElement('post_mime_type', $new_insert->post_mime_type));
-            $post_node->appendChild($dom->createElement('comment_count', $new_insert->comment_count));
-
-        }
-        file_put_contents("wphr_posts.xml", $dom->saveXML());
-    }
-}
-
-function checkUpDates(){
-    global $wpdb;
-    $dom = new DOMDocument();
-    $dom->load("wphr_posts.xml");
-    //$element = $dom->getElementsByTagName('post')[75];
-    //$old_element = $dom->documentElement->removeChild($element);
-    $posts_elements = $dom->getElementsByTagName('post');
-    $elements_length = $posts_elements->count();
-    for($i=$elements_length-1; $i>=0; $i--){
-        
-        $post_element = $posts_elements[$i];
-        $post_element_id = $post_element->getElementsByTagName('ID')->item(0)->nodeValue;
-        //$row = $wpdb->get_results("SELECT ID FROM `wphr_posts` WHERE ID = $post_element_id");
-        $row = $wpdb->get_results("SELECT * FROM `wphr_posts` WHERE ID = $post_element_id");
-        if(empty($row)){
-            $old_element = $dom->documentElement->removeChild($dom->getElementsByTagName('post')[$i]);
-            
-        }else{
-            $db_timestamp = new DateTime($row[0]->post_modified);
-            $xml_timestamp = new DateTime($post_element->getElementsByTagName('post_modified')->item(0)->nodeValue);
-            if($db_timestamp > $xml_timestamp){
-                $post_element->getElementsByTagName('post_author')->item(0)->nodeValue = $row[0]->$post_author;
-                $post_element->getElementsByTagName('post_date')->item(0)->nodeValue = $row[0]->$post_date;
-                $post_element->getElementsByTagName('post_date_gmt')->item(0)->nodeValue = $row[0]->$post_date_gmt;
-                $post_element->getElementsByTagName('post_content')->item(0)->nodeValue = $row[0]->$post_content;
-                $post_element->getElementsByTagName('post_title')->item(0)->nodeValue = $row[0]->$post_title;
-                $post_element->getElementsByTagName('post_excerpt')->item(0)->nodeValue = $row[0]->$post_excerpt;
-                $post_element->getElementsByTagName('post_status')->item(0)->nodeValue = $row[0]->$post_status;
-                $post_element->getElementsByTagName('comment_status')->item(0)->nodeValue = $row[0]->$comment_status;
-                $post_element->getElementsByTagName('ping_status')->item(0)->nodeValue = $row[0]->$ping_status;
-                $post_element->getElementsByTagName('post_password')->item(0)->nodeValue = $row[0]->$post_password;
-                $post_element->getElementsByTagName('post_name')->item(0)->nodeValue = $row[0]->$post_name;
-                $post_element->getElementsByTagName('to_ping')->item(0)->nodeValue = $row[0]->$to_ping;
-                $post_element->getElementsByTagName('pinged')->item(0)->nodeValue = $row[0]->$pinged;
-                $post_element->getElementsByTagName('post_modified')->item(0)->nodeValue = $row[0]->$post_modified;
-                $post_element->getElementsByTagName('post_modified_gmt')->item(0)->nodeValue = $row[0]->$post_modified_gmt;
-                $post_element->getElementsByTagName('post_content_filtered')->item(0)->nodeValue = $row[0]->$post_content_filtered;
-                $post_element->getElementsByTagName('post_parent')->item(0)->nodeValue = $row[0]->$post_parent;
-                $post_element->getElementsByTagName('guid')->item(0)->nodeValue = $row[0]->$guid;
-                $post_element->getElementsByTagName('menu_order')->item(0)->nodeValue = $row[0]->$menu_order;
-                $post_element->getElementsByTagName('post_type')->item(0)->nodeValue = $row[0]->$post_type;
-                $post_element->getElementsByTagName('post_mime_type')->item(0)->nodeValue = $row[0]->$post_mime_type;
-                $post_element->getElementsByTagName('comment_count')->item(0)->nodeValue = $row[0]->$comment_count;
-            }elseif($db_timestamp == $xml_timestamp){
-                //$wpdb->update('wphr_posts', array('post_modified' => '2020-06-11 09:33:20'), array('ID' => '268'));
-            }
-        }
-    }
-    
-    file_put_contents("wphr_posts.xml", $dom->saveXML()); // Save to xml file
 }
 
 function customTime($schedules){
@@ -428,10 +671,10 @@ function schedule_job(){
  add_filter( 'mime_types','add_new_mime');
  add_filter('plugin_action_links_' . $pluginFile, 'settings_link');
 
- add_filter( 'cron_schedules', 'customTime');
- add_action( 'wp_loaded', 'schedule_job');
- add_action( 'cron_job_db', 'update_SQL_from_XML');
- register_activation_hook( $pluginFile, 'xmlToSql' );
+ //add_filter( 'cron_schedules', 'customTime');
+ //add_action( 'wp_loaded', 'schedule_job');
+ //add_action( 'cron_job_db', 'update_SQL_from_XML');
+ //register_activation_hook( $pluginFile, 'xmlToSql' );
  
  add_action('admin_menu', 'add_admin_page');
  add_shortcode( 'database', 'updateItems' );
