@@ -72,11 +72,14 @@ function submitForm(){
     }
 
     if(isset($_POST['export_btn'])){
-        //sqlToXml();
+        sqlToXml();
+    }
+
+    if(isset($_POST['test_btn'])){
         //get_terms_taxonomies();
-        //get_wp_posts_metas();
+        //print_r(get_wp_posts_metas();
         //get_wp_term_relations();
-        get_products();
+        test_function();
     }
 
     ?>
@@ -91,30 +94,41 @@ function submitForm(){
         </form> 
     <?php
 
+    ?>
+        <form method="post" action="">
+        <input type="submit" name="test_btn" value="Test"><br><br>
+        </form> 
+    <?php
+
 }
 
-function get_products(){
+function test_function(){
     global $wpdb;
-    global $wp_filesystem;
+    $product_IDs = $wpdb->get_results("SELECT ID FROM `wphr_posts` WHERE ID IN (SELECT post_parent FROM wphr_posts WHERE post_type='product_variation') ", ARRAY_A);
+    $product_options = $wpdb->get_results("SELECT option_name, option_value FROM wphr_options WHERE option_name REGEXP " ."'".  implode('|',array_column($product_IDs, 'ID') ) . "'");
+    $price_options = get_option( '_transient_wc_var_prices_294', true );
+    if($product_options){
+        foreach($product_options as $product_option){
+            echo $product_option->option_name;
+            echo "<br>";
+            echo $product_option->option_value;
+            echo "<br>";
+        }
+    }else{
+        echo 'not price';
+    }
+}
 
-    if (empty($wp_filesystem)) {
-        require_once (ABSPATH . '/wp-admin/includes/file.php');
-        WP_Filesystem();
+function get_term_metas(){
+    global $wpdb;
+    $term_query = get_wp_terms();
+    $term_ids = array();
+    foreach($term_query ->terms as $term ){
+        array_push($term_ids, $term->term_id);
     }
     
-    if(!$xmlFile = $wp_filesystem->get_contents(ABSPATH .  '/wp-admin/wphr_posts.xml') ) {
-        echo 'failed to read img files';
-    }
-    
-    $images = $wpdb->get_results("SELECT * FROM wphr_posts WHERE post_type = 'product'");
-    foreach($images as $image){
-            // attachment
-            echo 'ID: ' . $image->ID . ' img->';
-            echo (get_post_meta( $image->ID, '_thumbnail_id', true));
-            echo '<br>';
-        
-    }
-    
+        $term_metas = $wpdb->get_results("SELECT * FROM `wphr_termmeta` WHERE wphr_termmeta.term_id IN(". implode(",", $term_ids) .")");
+    return $term_metas;
 }
 
 function get_terms_taxonomies(){
@@ -155,15 +169,25 @@ function get_wp_terms(){
 
 function get_wp_posts_metas(){
     global $wpdb;
-    $posts_meta = $wpdb->get_results("SELECT * FROM `wphr_postmeta` WHERE post_id IN (SELECT wphr_posts.ID FROM `wphr_posts` WHERE wphr_posts.post_type = 'product') ORDER BY meta_id ASC");
+    $posts_meta = $wpdb->get_results("SELECT * FROM wphr_postmeta WHERE wphr_postmeta.post_id IN (SELECT wp.ID
+    FROM wphr_posts wp
+        INNER JOIN wphr_postmeta wpm
+            ON (wp.ID = wpm.post_id AND wpm.meta_key = '_thumbnail_id')
+        INNER JOIN wphr_postmeta wpm2
+            ON (wpm.meta_value = wpm2.post_id AND wpm2.meta_key = '_wp_attached_file')) OR wphr_postmeta.post_id IN (SELECT wpm2.post_id
+    FROM wphr_posts wp
+        INNER JOIN wphr_postmeta wpm
+            ON (wp.ID = wpm.post_id AND wpm.meta_key = '_thumbnail_id')
+        INNER JOIN wphr_postmeta wpm2
+            ON (wpm.meta_value = wpm2.post_id AND wpm2.meta_key = '_wp_attached_file')) OR wphr_postmeta.post_id IN (SELECT wpm.post_id 
+            FROM  wphr_posts wp INNER JOIN wphr_postmeta wpm ON (wp.ID = wpm.post_id AND wp.post_type = 'product_variation')) ORDER BY wphr_postmeta.meta_id ASC");
     return $posts_meta;
 }
 
 // Export all database data to xml file
 function sqlToXml(){
     global $wpdb;
-    $product = 'product';
-    $productQuery = "SELECT * FROM wphr_posts WHERE post_type = 'product' ORDER BY ID ASC";
+    $productQuery = "SELECT * FROM wphr_posts WHERE post_type = 'product' OR post_type = 'product_variation' ORDER BY ID ASC";
     $xml = new DOMDocument('1.0', 'UTF-8');
     $xmlRoot = $xml->createElement('wphr_posts');
     $xmlRoot = $xml->appendChild($xmlRoot);
@@ -198,37 +222,41 @@ function sqlToXml(){
             $currentPerson->appendChild($xml->createElement('comment_count', $productRow->comment_count));
     }
 
+    $imageQuery = "SELECT * FROM wphr_posts WHERE wphr_posts.ID IN (SELECT wpm2.post_id
+    FROM wphr_posts wp
+        INNER JOIN wphr_postmeta wpm
+            ON (wp.ID = wpm.post_id AND wpm.meta_key = '_thumbnail_id')
+        INNER JOIN wphr_postmeta wpm2
+            ON (wpm.meta_value = wpm2.post_id AND wpm2.meta_key = '_wp_attached_file')) ORDER BY wphr_posts.ID";
+    $imageRows = $wpdb->get_results($imageQuery);
     $xmlImgRoot = $xml->createElement('imgs');
     $xmlImgRoot = $xmlRoot->appendChild($xmlImgRoot);
-
-    $imgQuery = "SELECT * FROM `wphr_posts` WHERE post_parent IN (SELECT ID FROM wphr_posts WHERE post_type = 'product')";
-    $imgRows = $wpdb->get_results($imgQuery);
-    foreach($imgRows as $imgRow){
-        $currentPerson = $xml->createElement("img");
-        $currentPerson = $xmlImgRoot->appendChild($currentPerson);
-        $currentPerson->appendChild($xml->createElement('ID',$imgRow->ID));
-        $currentPerson->appendChild($xml->createElement('post_author', $imgRow->post_author));
-        $currentPerson->appendChild($xml->createElement('post_date',$imgRow->post_date));
-        $currentPerson->appendChild($xml->createElement('post_date_gmt',$imgRow->post_date_gmt));
-        $currentPerson->appendChild($xml->createElement('post_content', $imgRow->post_content));
-        $currentPerson->appendChild($xml->createElement('post_title', $imgRow->post_title));
-        $currentPerson->appendChild($xml->createElement('post_excerpt', $imgRow->post_excerpt));
-        $currentPerson->appendChild($xml->createElement('post_status', $imgRow->post_status));
-        $currentPerson->appendChild($xml->createElement('comment_status', $imgRow->comment_status));
-        $currentPerson->appendChild($xml->createElement('ping_status', $imgRow->ping_status));
-        $currentPerson->appendChild($xml->createElement('post_password', $imgRow->post_password));
-        $currentPerson->appendChild($xml->createElement('post_name', $imgRow->post_name));
-        $currentPerson->appendChild($xml->createElement('to_ping', $imgRow->to_ping));
-        $currentPerson->appendChild($xml->createElement('pinged', $imgRow->pinged));
-        $currentPerson->appendChild($xml->createElement('post_modified', $imgRow->post_modified));
-        $currentPerson->appendChild($xml->createElement('post_modified_gmt', $imgRow->post_modified_gmt));
-        $currentPerson->appendChild($xml->createElement('post_content_filtered', $imgRow->post_content_filtered));
-        $currentPerson->appendChild($xml->createElement('post_parent', $imgRow->post_parent));
-        $currentPerson->appendChild($xml->createElement('guid', $imgRow->guid));
-        $currentPerson->appendChild($xml->createElement('menu_order', $imgRow->menu_order));
-        $currentPerson->appendChild($xml->createElement('post_type', $imgRow->post_type));
-        $currentPerson->appendChild($xml->createElement('post_mime_type', $imgRow->post_mime_type));
-        $currentPerson->appendChild($xml->createElement('comment_count', $imgRow->comment_count));
+    foreach($imageRows as $imageRow){
+            $currentPerson = $xml->createElement("img");
+            $currentPerson = $xmlImgRoot->appendChild($currentPerson);
+            $currentPerson->appendChild($xml->createElement('ID',$imageRow->ID));
+            $currentPerson->appendChild($xml->createElement('post_author', $imageRow->post_author));
+            $currentPerson->appendChild($xml->createElement('post_date',$imageRow->post_date));
+            $currentPerson->appendChild($xml->createElement('post_date_gmt',$imageRow->post_date_gmt));
+            $currentPerson->appendChild($xml->createElement('post_content', $imageRow->post_content));
+            $currentPerson->appendChild($xml->createElement('post_title', $imageRow->post_title));
+            $currentPerson->appendChild($xml->createElement('post_excerpt', $imageRow->post_excerpt));
+            $currentPerson->appendChild($xml->createElement('post_status', $imageRow->post_status));
+            $currentPerson->appendChild($xml->createElement('comment_status', $imageRow->comment_status));
+            $currentPerson->appendChild($xml->createElement('ping_status', $imageRow->ping_status));
+            $currentPerson->appendChild($xml->createElement('post_password', $imageRow->post_password));
+            $currentPerson->appendChild($xml->createElement('post_name', $imageRow->post_name));
+            $currentPerson->appendChild($xml->createElement('to_ping', $imageRow->to_ping));
+            $currentPerson->appendChild($xml->createElement('pinged', $imageRow->pinged));
+            $currentPerson->appendChild($xml->createElement('post_modified', $imageRow->post_modified));
+            $currentPerson->appendChild($xml->createElement('post_modified_gmt', $imageRow->post_modified_gmt));
+            $currentPerson->appendChild($xml->createElement('post_content_filtered', $imageRow->post_content_filtered));
+            $currentPerson->appendChild($xml->createElement('post_parent', $imageRow->post_parent));
+            $currentPerson->appendChild($xml->createElement('guid', $imageRow->guid));
+            $currentPerson->appendChild($xml->createElement('menu_order', $imageRow->menu_order));
+            $currentPerson->appendChild($xml->createElement('post_type', $imageRow->post_type));
+            $currentPerson->appendChild($xml->createElement('post_mime_type', $imageRow->post_mime_type));
+            $currentPerson->appendChild($xml->createElement('comment_count', $imageRow->comment_count));
     }
 
     $xmlMetaRoot = $xml->createElement('products_meta');
@@ -309,74 +337,47 @@ function sqlToXml(){
                         $currentPerson->appendChild($xml->createElement('meta_key',$post_meta->meta_key));
                         $currentPerson->appendChild($xml->createElement('meta_value',$post_meta->meta_value));
         }
+        
+        $xml_term_meta_root = $xml->createElement('terms_meta');
+        $xml_term_meta_root = $xmlRoot->appendChild($xml_term_meta_root);
+        $terms_meta = get_term_metas();    
+                    foreach($terms_meta as $term_meta){
+                        $currentPerson = $xml->createElement("term_meta");
+                        $currentPerson = $xml_term_meta_root->appendChild($currentPerson);
+                        $currentPerson->appendChild($xml->createElement('meta_id',$term_meta->meta_id));
+                        $currentPerson->appendChild($xml->createElement('term_id',$term_meta->term_id));
+                        $currentPerson->appendChild($xml->createElement('meta_key',$term_meta->meta_key));
+                        $currentPerson->appendChild($xml->createElement('meta_value',$term_meta->meta_value));
+        }
+        
+        $xml_attribute_taxonomies_root = $xml->createElement('attribute_taxonomies');
+        $xml_attribute_taxonomies_root = $xmlRoot->appendChild($xml_attribute_taxonomies_root);
+        $attribute_taxonomies = $wpdb->get_results("SELECT * FROM `wphr_woocommerce_attribute_taxonomies`");    
+                    foreach($attribute_taxonomies as $attribute_taxonomy){
+                        $currentPerson = $xml->createElement("attribute_taxonomy");
+                        $currentPerson = $xml_attribute_taxonomies_root->appendChild($currentPerson);
+                        $currentPerson->appendChild($xml->createElement('attribute_id',$attribute_taxonomy->attribute_id));
+                        $currentPerson->appendChild($xml->createElement('attribute_name',$attribute_taxonomy->attribute_name));
+                        $currentPerson->appendChild($xml->createElement('attribute_label',$attribute_taxonomy->attribute_label));
+                        $currentPerson->appendChild($xml->createElement('attribute_type',$attribute_taxonomy->attribute_type));
+                        $currentPerson->appendChild($xml->createElement('attribute_orderby',$attribute_taxonomy->attribute_orderby));
+                        $currentPerson->appendChild($xml->createElement('attribute_public',$attribute_taxonomy->attribute_public));
+        }
+        // kemfjfjhn
+        $xml_options_root = $xml->createElement('options');
+        $xml_options_root = $xmlRoot->appendChild($xml_options_root);
+        $product_IDs = $wpdb->get_results("SELECT ID FROM `wphr_posts` WHERE ID IN (SELECT post_parent FROM wphr_posts WHERE post_type='product_variation') ", ARRAY_A);
+        $product_options = $wpdb->get_results("SELECT option_name, option_value FROM wphr_options WHERE option_name REGEXP " ."'".  implode('|',array_column($product_IDs, 'ID') ) . "'");
+        foreach($product_options as $product_option){        
+            $currentPerson = $xml->createElement("option");
+            $currentPerson = $xml_options_root->appendChild($currentPerson);
+            $currentPerson->appendChild($xml->createElement('option_name',$product_option->option_name));
+            $currentPerson->appendChild($xml->createElement('option_value',$product_option->option_value));
+            
+    }
+        // Options attributes have same values with attribute_taxonomies so there is no need to export to xml file
 
     saveXMLFile($xml);
-}
-
-function xmlToSql($xml_url){
-    global $wpdb; 
-    $dom = new DOMDocument('1.0', 'UTF-8');
-    $dom->load('https://placeadvisor.aserver.gr/wp-admin/wphr_posts.xml') or die("Cant load xml file");
-    $elements_length = $dom->getElementsByTagName('post')->length;
-    $posts_elements = $dom->getElementsByTagName('post');
-    $last_post_element = $posts_elements[$elements_length-1];
-    $last_post_element_id = $last_post_element->getElementsByTagName('ID')->item(0)->nodeValue;
-    $last_insert_id = $wpdb->get_results("SELECT ID FROM `wphr_posts` ORDER BY ID DESC LIMIT 1"); // last ID
-    $last_insert_id_num = $last_insert_id[0]->ID;
-    $xpath = new DOMXPath($dom);
-    $new_inserts = $xpath->query("//wphr_posts/post/ID[text() = $last_insert_id_num]/..");
-    //print_r($new_inserts->item(0)->getElementsByTagName('post_modified')->item(0)->nodeValue);
-    $new_insert_id = preg_replace("/[^0-9]/", '', $new_inserts->item(0)->getElementsByTagName('ID')->item(0)->getNodePath());
-    if($last_post_element_id > $last_insert_id_num){
-        for($i=$new_insert_id; $i<$posts_elements->length; $i++){
-            $next_element = $posts_elements->item($i);
-            $new_insert_array = array(
-            'ID' => $next_element->getElementsByTagName('ID')->item(0)->nodeValue, 
-            'post_author' => $next_element->getElementsByTagName('post_author')->item(0)->nodeValue,
-            'post_date' => $next_element->getElementsByTagName('post_date')->item(0)->nodeValue,
-            'post_date_gmt' => $next_element->getElementsByTagName('post_date_gmt')->item(0)->nodeValue,
-            'post_content' => $next_element->getElementsByTagName('post_content')->item(0)->nodeValue,
-            'post_title' => $next_element->getElementsByTagName('post_title')->item(0)->nodeValue,
-            'post_excerpt' => $next_element->getElementsByTagName('post_excerpt')->item(0)->nodeValue,
-            'post_status' => $next_element->getElementsByTagName('post_status')->item(0)->nodeValue,
-            'comment_status' => $next_element->getElementsByTagName('comment_status')->item(0)->nodeValue,
-            'ping_status' => $next_element->getElementsByTagName('ping_status')->item(0)->nodeValue,
-            'post_password' => $next_element->getElementsByTagName('post_password')->item(0)->nodeValue,
-            'post_name' => $next_element->getElementsByTagName('post_name')->item(0)->nodeValue,
-            'to_ping' => $next_element->getElementsByTagName('to_ping')->item(0)->nodeValue,
-            'pinged' => $next_element->getElementsByTagName('pinged')->item(0)->nodeValue,
-            'post_modified' => $next_element->getElementsByTagName('post_modified')->item(0)->nodeValue,
-            'post_modified_gmt' => $next_element->getElementsByTagName('post_modified_gmt')->item(0)->nodeValue,
-            'post_content_filtered' => $next_element->getElementsByTagName('post_content_filtered')->item(0)->nodeValue,
-            'post_parent' => $next_element->getElementsByTagName('post_parent')->item(0)->nodeValue,
-            'guid' => $next_element->getElementsByTagName('guid')->item(0)->nodeValue,
-            'menu_order' => $next_element->getElementsByTagName('menu_order')->item(0)->nodeValue,
-            'post_type' => $next_element->getElementsByTagName('post_type')->item(0)->nodeValue,
-            'post_mime_type' => $next_element->getElementsByTagName('post_mime_type')->item(0)->nodeValue,
-            'comment_count' => $next_element->getElementsByTagName('comment_count')->item(0)->nodeValue);
-            $wpdb->insert('wphr_posts', $new_insert_array);
-        }
-    }
-}
-
-function xmlToSqlUpdates(){
-    global $wpdb;
-    $dom = new DomDocument('1.0', 'UTF-8');
-    $dom ->load('https://placeadvisor.aserver.gr/wp-admin/wphr_posts.xml') or die("Cant load xml file");
-    $posts_elements = $dom->getElementsByTagName('posts');
-    $xpath = new DOMXPath($dom);
-    $db_inserts = $wpdb->get_results('SELECT ID, post_modified FROM wphr_posts ORDER BY ID ASC');
-    foreach($db_inserts as $db_insert){
-        if(count($xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")) == 0){
-            $wpdb->delete('wphr_posts', array('ID'=>$db_insert->ID));
-        }else{
-            $xml_timestamp = $xpath->query("//wphr_posts/post/ID[text() = $db_insert->ID]/..")->item(0)->getElementsByTagName('post_modified')->item(0)->nodeValue;
-            $db_timestamp = $db_insert->post_modified;
-            if($xml_timestamp > $db_timestamp){
-                $wpdb->update('wphr_posts', array('post_modified' => $xml_timestamp), array('ID' => $db_insert->ID));
-            }
-        } 
-    }  
 }
 
 function readSQLFile($fileUrl, $filePath){
@@ -407,11 +408,6 @@ function readCSVFile($fileUrl, $filePath){
     unlink( $filePath );
 }
 
-function makeNewTable(){
-    
-    global $wpdb;
-    $wpdb->insert('myTable', array('id' => 1, 'first_name' => 'first name','last_name' => 'last name', 'email' => 'email@email.com', 'gender' => 'male') );
-}
 
 function add_new_mime(){
     $mimes['sql'] = 'text/plain';
@@ -434,7 +430,7 @@ function check_inserts(){
     }
     $startTime = microtime(true);
     // Last product ID in DB
-    $last_insert_id = $wpdb->get_results("SELECT ID FROM `wphr_posts` WHERE post_type = 'product' ORDER BY ID DESC LIMIT 1")[0]->ID; // Last insert product ID from DB
+    $last_insert_id = $wpdb->get_results("SELECT ID FROM `wphr_posts` WHERE post_type = 'product' OR post_type = 'product_variation' ORDER BY ID DESC LIMIT 1")[0]->ID; // Last insert product ID from DB
     $dom = new DOMDocument('1.0', 'UTF-8');
     $dom->loadXML($xmlFile);
     $root_node = $dom->getElementsByTagName('products')->item(0);
@@ -442,7 +438,7 @@ function check_inserts(){
     $last_product_element = $xml->xpath('/wphr_posts/products/product[last()]')[0]->ID; // Last product ID from XML
     
     if($last_product_element < $last_insert_id){
-        $new_inserts = $wpdb->get_results("SELECT * FROM `wphr_posts` where ID between $last_product_element+1 and $last_insert_id and post_type = 'product'");
+        $new_inserts = $wpdb->get_results("SELECT * FROM `wphr_posts` WHERE ID > $last_product_element AND post_type = 'product' OR post_type = 'product_variation' ORDER BY ID ASC");
         foreach($new_inserts as $new_insert){
             $post_node = $root_node->appendChild($dom->createElement('product'));
             $post_node->appendChild($dom->createElement('ID', $new_insert->ID));
@@ -473,11 +469,21 @@ function check_inserts(){
         
     }
         $root_node = $dom->getElementsByTagName('imgs')->item(0);
-        $last_insert_img_id = $wpdb->get_results("SELECT * FROM `wphr_posts` WHERE post_parent IN (SELECT ID FROM wphr_posts WHERE post_type = 'product') ORDER BY ID DESC LIMIT 1")[0]->ID;
+        $last_insert_img_id = $wpdb->get_results("SELECT wphr_posts.ID FROM wphr_posts WHERE wphr_posts.ID IN (SELECT wpm2.post_id
+        FROM wphr_posts wp
+            INNER JOIN wphr_postmeta wpm
+                ON (wp.ID = wpm.post_id AND wpm.meta_key = '_thumbnail_id')
+            INNER JOIN wphr_postmeta wpm2
+                ON (wpm.meta_value = wpm2.post_id AND wpm2.meta_key = '_wp_attached_file')) ORDER BY wphr_posts.ID DESC LIMIT 1")[0]->ID; //Last img ID from DB
         $last_img_element = $xml->xpath('/wphr_posts/imgs/img[last()]')[0]->ID; // Last img ID from XML
         
         if($last_img_element < $last_insert_img_id){
-            $new_img_inserts = $wpdb->get_results("SELECT * FROM `wphr_posts` where ID between $last_img_element+1 and $last_insert_img_id and post_type = 'attachment'");
+            $new_img_inserts = $wpdb->get_results("SELECT * FROM wphr_posts WHERE wphr_posts.ID IN (SELECT wpm2.post_id
+            FROM wphr_posts wp
+                INNER JOIN wphr_postmeta wpm
+                    ON (wp.ID = wpm.post_id AND wpm.meta_key = '_thumbnail_id')
+                INNER JOIN wphr_postmeta wpm2
+                    ON (wpm.meta_value = wpm2.post_id AND wpm2.meta_key = '_wp_attached_file')) AND wphr_posts.ID > $last_img_element ORDER BY wphr_posts.ID");
             foreach($new_img_inserts as $new_img_insert){
                 $post_node = $root_node->appendChild($dom->createElement('img'));
                 $post_node->appendChild($dom->createElement('ID', $new_img_insert->ID));
@@ -512,7 +518,7 @@ function check_inserts(){
         $last_element_product_meta = $xml->xpath("/wphr_posts/products_meta/product_meta[last()]"); // Last product_id meta in XML file
         $last_element_product_meta_id = (int)$last_element_product_meta[0]->product_id;
         if($last_product_meta_id > $last_element_product_meta_id){
-            $new_products_meta = $wpdb->get_results("SELECT * FROM `wphr_wc_product_meta_lookup` WHERE product_id BETWEEN $last_element_product_meta_id+1 and $last_product_meta_id");
+            $new_products_meta = $wpdb->get_results("SELECT * FROM `wphr_wc_product_meta_lookup` WHERE product_id BETWEEN $last_element_product_meta_id+1 AND $last_product_meta_id");
             foreach($new_products_meta as $new_product_meta){
                 $post_node = $root_node->appendChild($dom->createElement('product_meta'));
                 $post_node->appendChild($dom->createElement('product_id',$new_product_meta->product_id));
@@ -555,19 +561,18 @@ function check_inserts(){
     }
 
     $root_node = $dom->getElementsByTagName('term_relationships')->item(0);
-    $last_object_id = $wpdb->get_results("SELECT object_id FROM `wphr_term_relationships` WHERE object_id IN (SELECT ID FROM `wphr_posts` WHERE post_type='product') ORDER BY object_id DESC LIMIT 1")[0]->object_id; // Last object_id in DB
-    $last_object_id_element = $xml->xpath("/wphr_posts/term_relationships/term_relationship[last()]")[0]->object_id; // Last object_id in XML file
-    if($last_object_id > $last_object_id_element){
-    $term_relations = get_wp_term_relations();
-    $new_products_meta = $wpdb->get_results("SELECT * FROM `wphr_term_relationships` WHERE object_id IN (SELECT ID FROM `wphr_posts` WHERE post_type='product') AND object_id BETWEEN $last_object_id_element+1 and $last_object_id");
-    foreach ( $new_products_meta as $new_product_meta ) {
-        $post_node = $root_node->appendChild($$dom->createElement('term_relationship'));
-        $post_node->appendChild($dom->createElement('object_id',$new_product_meta->object_id));
-        $post_node->appendChild($dom->createElement('term_taxonomy_id',$new_product_meta->term_taxonomy_id));
-        $post_node->appendChild($dom->createElement('term_id',$new_product_meta->term_id));
+    $term_relationships = $wpdb->get_results("SELECT * FROM `wphr_term_relationships` WHERE object_id IN (SELECT ID FROM `wphr_posts` WHERE post_type='product') ORDER BY object_id ASC");
+    foreach($term_relationships as $term_relationship){
+        $is_object_id_exist = $xml->xpath("/wphr_posts/term_relationships/term_relationship[object_id = $term_relationship->object_id and term_taxonomy_id = $term_relationship->term_taxonomy_id]");
+        if(count($is_object_id_exist) == 0)
+        {
+            $post_node = $root_node->appendChild($dom->createElement('term_relationship'));
+            $post_node->appendChild($dom->createElement('object_id',$term_relationship->object_id));
+            $post_node->appendChild($dom->createElement('term_taxonomy_id',$term_relationship->term_taxonomy_id));
+            $post_node->appendChild($dom->createElement('term_order',$term_relationship->term_order));
         }
-        saveXMLFile($dom);
     }
+        saveXMLFile($dom);
 
     $root_node = $dom->getElementsByTagName('term_taxonomies')->item(0);
     $term_query = get_wp_terms();
@@ -593,37 +598,81 @@ function check_inserts(){
     }
 
     $root_node = $dom->getElementsByTagName('posts_meta')->item(0);
-    $last_post_meta_id = $wpdb->get_results("SELECT * FROM `wphr_postmeta` ORDER BY meta_id DESC LIMIT 1")[0]->meta_id; //Last post_meta_id in DB
+    $last_post_meta_id = $wpdb->get_results("SELECT wphr_postmeta.meta_id FROM wphr_postmeta WHERE wphr_postmeta.post_id IN (SELECT wp.ID
+    FROM wphr_posts wp
+        INNER JOIN wphr_postmeta wpm
+            ON (wp.ID = wpm.post_id AND wpm.meta_key = '_thumbnail_id')
+        INNER JOIN wphr_postmeta wpm2
+            ON (wpm.meta_value = wpm2.post_id AND wpm2.meta_key = '_wp_attached_file')) OR wphr_postmeta.post_id IN (SELECT wpm2.post_id
+    FROM wphr_posts wp
+        INNER JOIN wphr_postmeta wpm
+            ON (wp.ID = wpm.post_id AND wpm.meta_key = '_thumbnail_id')
+        INNER JOIN wphr_postmeta wpm2
+            ON (wpm.meta_value = wpm2.post_id AND wpm2.meta_key = '_wp_attached_file')) ORDER BY wphr_postmeta.meta_id DESC LIMIT 1")[0]->meta_id; //Last post_meta_id in DB
     $last_post_meta_id_element = $xml->xpath("/wphr_posts/posts_meta/post_meta[last()]")[0]->meta_id; // Last post_meta_id in XML file 
     if($last_post_meta_id > $last_post_meta_id_element){
-        $posts_meta = $wpdb->get_results("SELECT * FROM `wphr_postmeta` WHERE meta_id BETWEEN $last_post_meta_id_element+1 AND $last_post_meta_id");
+
+        $posts_meta = $wpdb->get_results("SELECT * FROM wphr_postmeta WHERE wphr_postmeta.post_id IN (SELECT wp.ID
+        FROM wphr_posts wp
+            INNER JOIN wphr_postmeta wpm
+                ON (wp.ID = wpm.post_id AND wpm.meta_key = '_thumbnail_id')
+            INNER JOIN wphr_postmeta wpm2
+                ON (wpm.meta_value = wpm2.post_id AND wpm2.meta_key = '_wp_attached_file')) OR wphr_postmeta.post_id IN (SELECT wpm2.post_id
+        FROM wphr_posts wp
+            INNER JOIN wphr_postmeta wpm
+                ON (wp.ID = wpm.post_id AND wpm.meta_key = '_thumbnail_id')
+            INNER JOIN wphr_postmeta wpm2
+                ON (wpm.meta_value = wpm2.post_id AND wpm2.meta_key = '_wp_attached_file')) OR wphr_postmeta.post_id IN (SELECT wpm.post_id 
+                FROM  wphr_posts wp INNER JOIN wphr_postmeta wpm ON (wp.ID = wpm.post_id AND wp.post_type = 'product_variation')) 
+                GROUP BY wphr_postmeta.meta_id HAVING wphr_postmeta.meta_id > $last_post_meta_id_element ORDER BY wphr_postmeta.meta_id ASC");
         foreach($posts_meta as $post_meta){
-            if(get_post_type( $post_meta->post_id ) == 'product'){
                 $post_node = $root_node->appendChild($dom->createElement('post_meta'));
                 $post_node->appendChild($dom->createElement('meta_id',$post_meta->meta_id));
                 $post_node->appendChild($dom->createElement('post_id',$post_meta->post_id));
                 $post_node->appendChild($dom->createElement('meta_key',$post_meta->meta_key));
                 $post_node->appendChild($dom->createElement('meta_value',$post_meta->meta_value));
-            }
         }
         saveXMLFile($dom);
     }
 
+    $root_node = $dom->getElementsByTagName('terms_meta')->item(0);
+    $last_term_meta_id = $wpdb->get_results("SELECT meta_id FROM `wphr_termmeta` ORDER BY meta_id DESC LIMIT 1")[0]->meta_id; // Last last meta id in db
+    $last_term_meta_id_element = $xml->xpath("/wphr_posts/terms_meta/term_meta[last()]")[0]->meta_id; // Last term in XML file
+    if($last_term_meta_id > $last_term_meta_id_element){
+        $terms_meta = get_term_metas();
+        foreach ( $terms_meta as $term_meta ) {
+            if($term_meta->meta_id > $last_term_meta_id_element){
+                $post_node = $root_node->appendChild($dom->createElement('term_meta'));
+                $post_node->appendChild($dom->createElement('meta_id',$term_meta->meta_id));
+                $post_node->appendChild($dom->createElement('term_id',$term_meta->term_id));
+                $post_node->appendChild($dom->createElement('meta_key',$term_meta->meta_key));
+                $post_node->appendChild($dom->createElement('meta_value',$term_meta->meta_value));
+            }
+        }
+            saveXMLFile($dom);
+    }
+    
+    $root_node = $dom->getElementsByTagName('attribute_taxonomies')->item(0);
+    $last_attribute_taxonomies_id = $wpdb->get_results("SELECT attribute_id FROM `wphr_woocommerce_attribute_taxonomies` ORDER BY attribute_id DESC LIMIT 1")[0]->attribute_id; // Last last meta id in db
+    $last_attribute_taxonomies_id_element = $xml->xpath("/wphr_posts/attribute_taxonomies/attribute_taxonomy[last()]")[0]->attribute_id; // Last term in XML file
+    if($last_attribute_taxonomies_id > $last_attribute_taxonomies_id_element){
+        $attribute_taxonomies = $wpdb->get_results("SELECT * FROM `wphr_woocommerce_attribute_taxonomies` WHERE attribute_id > $last_attribute_taxonomies_id_element");
+        foreach ( $attribute_taxonomies as $attribute_taxonomy ) {
+                $post_node = $root_node->appendChild($dom->createElement('attribute_taxonomy'));
+                $post_node->appendChild($dom->createElement('attribute_id',$attribute_taxonomy->attribute_id));
+                $post_node->appendChild($dom->createElement('attribute_name',$attribute_taxonomy->attribute_name));
+                $post_node->appendChild($dom->createElement('attribute_label',$attribute_taxonomy->attribute_label));
+                $post_node->appendChild($dom->createElement('attribute_type',$attribute_taxonomy->attribute_type));
+                $post_node->appendChild($dom->createElement('attribute_orderby',$attribute_taxonomy->attribute_orderby));
+                $post_node->appendChild($dom->createElement('attribute_public',$attribute_taxonomy->attribute_public));
+            
+        }
+            saveXMLFile($dom);
+    }
+    // options doesn't need to check for new inserts
+
     $endTime = microtime(true);
     echo "Check new inserts time: " . ($endTime - $startTime) . "<br>";
-}
-
-function saveXMLFile($dom){
-    global $wp_filesystem;
-    // Initialize the WP filesystem, no more using 'file-put-contents' function
-    if (empty($wp_filesystem)) {
-        require_once (ABSPATH . '/wp-admin/includes/file.php');
-        WP_Filesystem();
-    }
-    $string_dom = $dom->saveXML();
-    if(!$wp_filesystem->put_contents(ABSPATH .  '/wp-admin/wphr_posts.xml', $string_dom, 0644) ) {
-        echo 'failed to check inserts';
-    }
 }
 
 function checkUpDates(){
@@ -681,7 +730,7 @@ function checkUpDates(){
                 $post_element->getElementsByTagName('post_type')->item(0)->nodeValue = $row[0]->post_type;
                 $post_element->getElementsByTagName('post_mime_type')->item(0)->nodeValue = $row[0]->post_mime_type;
                 $post_element->getElementsByTagName('comment_count')->item(0)->nodeValue = $row[0]->comment_count;
-
+                
                 $post_meta_element->getElementsByTagName('product_id')->item(0)->nodeValue = $metaRow[0]->product_id;
                 $post_meta_element->getElementsByTagName('sku')->item(0)->nodeValue = $metaRow[0]->sku;
                 $post_meta_element->getElementsByTagName('virtual')->item(0)->nodeValue = $metaRow[0]->virtual;
@@ -778,14 +827,10 @@ function checkUpDates(){
         
         $term_rel_element = $term_rel_elements[$i];
         $term_rel_element_id = $term_rel_element->getElementsByTagName('object_id')->item(0)->nodeValue;
-        
-        $row = $wpdb->get_results("SELECT * FROM `wphr_term_relationships` WHERE object_id = $term_rel_element_id");
+        $term_tax_rel_element_id = $term_rel_element->getElementsByTagName('term_taxonomy_id')->item(0)->nodeValue;
+        $row = $wpdb->get_results("SELECT * FROM `wphr_term_relationships` WHERE object_id = $term_rel_element_id AND term_taxonomy_id = $term_tax_rel_element_id");
         if(empty($row)){
             $dom->getElementsByTagName('term_relationships')->item(0)->removeChild($term_rel_element);
-        }else{
-            $term_rel_element->getElementsByTagName('object_id')->item(0)->nodeValue = $row[0]->object_id;
-            $term_rel_element->getElementsByTagName('term_taxonomy_id')->item(0)->nodeValue = $row[0]->term_taxonomy_id;
-            $term_rel_element->getElementsByTagName('term_order')->item(0)->nodeValue = $row[0]->term_order;
         }
     }
 
@@ -809,43 +854,60 @@ function checkUpDates(){
         }
     }
     
-    $posts_meta_elements = $dom->getElementsByTagName('posts_meta')->item(0)->getElementsByTagName('post_meta');
-    $elements_length = $posts_meta_elements->count();
+    $terms_meta_elements = $dom->getElementsByTagName('terms_meta')->item(0)->getElementsByTagName('term_meta');
+    $elements_length = $terms_meta_elements->count();
     for($i=$elements_length-1; $i>=0; $i--){
         
-        $post_meta_element = $posts_meta_elements[$i];
-        $post_meta_element_id = $post_meta_element->getElementsByTagName('meta_id')->item(0)->nodeValue;
+        $term_meta_element = $terms_meta_elements[$i];
+        $term_meta_element_id = $term_meta_element->getElementsByTagName('meta_id')->item(0)->nodeValue;
         
-        $row = $wpdb->get_results("SELECT * FROM `wphr_postmeta` WHERE meta_id = $post_meta_element_id");
+        $row = $wpdb->get_results("SELECT * FROM `wphr_termmeta` WHERE meta_id = $term_meta_element_id");
         if(empty($row)){
-            $dom->getElementsByTagName('meta_id')->item(0)->removeChild($post_meta_element);
+            $dom->getElementsByTagName('terms_meta')->item(0)->removeChild($term_meta_element);
         }else{
-                $post_meta_element->getElementsByTagName('meta_id')->item(0)->nodeValue = $row[0]->meta_id;
-                $post_meta_element->getElementsByTagName('post_id')->item(0)->nodeValue = $row[0]->post_id;
-                $post_meta_element->getElementsByTagName('meta_key')->item(0)->nodeValue = $row[0]->meta_key;
-                $post_meta_element->getElementsByTagName('meta_value')->item(0)->nodeValue = $row[0]->meta_value;
+                $term_meta_element->getElementsByTagName('meta_id')->item(0)->nodeValue = $row[0]->meta_id;
+                $term_meta_element->getElementsByTagName('term_id')->item(0)->nodeValue = $row[0]->term_id;
+                $term_meta_element->getElementsByTagName('meta_key')->item(0)->nodeValue = $row[0]->meta_key;
+                $term_meta_element->getElementsByTagName('meta_value')->item(0)->nodeValue = $row[0]->meta_value;
         }
     }
-
+    
+    $attribute_taxonomies_elements = $dom->getElementsByTagName('attribute_taxonomies')->item(0)->getElementsByTagName('attribute_taxonomy');
+    $elements_length = $attribute_taxonomies_elements->count();
+    for($i=$elements_length-1; $i>=0; $i--){
+        
+        $attribute_taxonomy_element = $attribute_taxonomies_elements[$i];
+        $attribute_taxonomy_element_id = $attribute_taxonomy_element->getElementsByTagName('attribute_id')->item(0)->nodeValue;
+        
+        $row = $wpdb->get_results("SELECT * FROM `wphr_woocommerce_attribute_taxonomies` WHERE attribute_id = $attribute_taxonomy_element_id");
+        if(empty($row)){
+            $dom->getElementsByTagName('attribute_taxonomies')->item(0)->removeChild($attribute_taxonomy_element);
+        }else{
+                $attribute_taxonomy_element->getElementsByTagName('attribute_id')->item(0)->nodeValue = $row[0]->attribute_id;
+                $attribute_taxonomy_element->getElementsByTagName('attribute_name')->item(0)->nodeValue = $row[0]->attribute_name;
+                $attribute_taxonomy_element->getElementsByTagName('attribute_label')->item(0)->nodeValue = $row[0]->attribute_label;
+                $attribute_taxonomy_element->getElementsByTagName('attribute_type')->item(0)->nodeValue = $row[0]->attribute_type;
+                $attribute_taxonomy_element->getElementsByTagName('attribute_orderby')->item(0)->nodeValue = $row[0]->attribute_orderby;
+                $attribute_taxonomy_element->getElementsByTagName('attribute_public')->item(0)->nodeValue = $row[0]->attribute_public;
+        }
+    }
+    
     saveXMLFile($dom);
     $endTime = microtime(true);
     echo "Checkup updates time: " . ($endTime - $startTime);
 }
 
-function transferImgs(){
-    global $wpdp;
+function saveXMLFile($dom){
     global $wp_filesystem;
-
+    // Initialize the WP filesystem, no more using 'file-put-contents' function
     if (empty($wp_filesystem)) {
         require_once (ABSPATH . '/wp-admin/includes/file.php');
         WP_Filesystem();
     }
-    
-    if(!$xmlFile = $wp_filesystem->get_contents(ABSPATH .  '/wp-admin/wphr_posts.xml') ) {
-        echo 'failed to read img files';
+    $string_dom = $dom->saveXML();
+    if(!$wp_filesystem->put_contents(ABSPATH .  '/wp-admin/wphr_posts.xml', $string_dom, 0644) ) {
+        echo 'failed to check inserts';
     }
-
-
 }
 
 function update_XML_from_sql(){
